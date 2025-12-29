@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <title>聚会翻炸弹</title>
+
+    <style>
+
+        body {
+
+            text-align: center;
+
+            font-family: sans-serif;
+
+        }
+
+        #game-container {
+
+            margin: 20px auto;
+
+            display: inline-block;
+
+        }
+
+        .grid {
+
+            display: grid;
+
+            grid-template-columns: repeat(5, 60px);
+
+            grid-gap: 5px;
+
+            margin-bottom: 20px;
+
+        }
+
+        .cell {
+
+            width: 60px;
+
+            height: 60px;
+
+            background-color: #3498db;
+
+            border-radius: 5px;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            font-size: 24px;
+
+            font-weight: bold;
+
+            color: white;
+
+            cursor: pointer;
+
+            user-select: none;
+
+        }
+
+        .cell.revealed {
+
+            background-color: #ecf0f1;
+
+            color: #2c3e50;
+
+            cursor: default;
+
+        }
+
+        .cell.bomb {
+
+            background-color: #e74c3c;
+
+        }
+
+        #status {
+
+            font-size: 20px;
+
+            margin: 10px;
+
+        }
+
+        button {
+
+            padding: 10px 20px;
+
+            font-size: 16px;
+
+            cursor: pointer;
+
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <h1>聚会翻炸弹 💣</h1>
+
+    <div id="game-container">
+
+        <div id="status">游戏开始！轮流点击格子。</div>
+
+        <div class="grid" id="game-board">
+
+            <!-- 棋盘格子将由JavaScript动态生成 -->
+
+        </div>
+
+        <button onclick="resetGame()">重新开始游戏</button>
+        <!-- 在 <button onclick="resetGame()">重新开始游戏</button> 这一行之后，添加以下按钮 -->
+        <button onclick="openCustomizeModal()" style="margin-left: 10px; background-color: #9b59b6; color: white;">自定义题库</button>
+
+        <!-- 在 </div> 和 </body> 之前，添加这个隐藏的弹窗（模态框）结构 -->
+        <div id="customModal" style="display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+            <div style="background-color: white; margin: 10% auto; padding: 20px; border-radius: 10px; width: 80%; max-width: 600px;">
+                <h2>自定义题库 📝</h2>
+                <p>请按照以下格式输入题目，一行一个：</p>
+                <p><strong>格式：</strong> <code>真心话:问题内容</code> 或 <code>大冒险:挑战内容</code></p>
+                <p><strong>例如：</strong><br>
+                    真心话:你上次哭是什么时候？<br>
+                    大冒险:用手机给通讯录里第三个人发一句“我想你了”。
+                </p>
+                <textarea id="questionInput" rows="15" style="width: 100%; margin: 15px 0; padding: 10px; font-family: monospace;"></textarea>
+                <div>
+                    <button onclick="saveCustomQuestions()" style="padding: 10px 20px; background-color: #2ecc71; color: white; border: none; border-radius: 5px; cursor: pointer;">保存并关闭</button>
+                    <button onclick="closeCustomizeModal()" style="padding: 10px 20px; margin-left: 10px; background-color: #95a5a6; color: white; border: none; border-radius: 5px; cursor: pointer;">取消</button>
+                    <button onclick="resetToDefault()" style="padding: 10px 20px; margin-left: 10px; background-color: #e67e22; color: white; border: none; border-radius: 5px; cursor: pointer;">恢复默认题目</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+ 
+
+    <script>
+
+        // =========== 游戏配置 ===========
+
+        const GRID_SIZE = 5;   // 5x5的棋盘
+
+        const BOMB_COUNT = 3;  // 放置3颗炸弹
+
+        let gameBoard = [];    // 存储棋盘数据
+
+        let gameOver = false;
+
+ 
+
+        // =========== 初始化游戏 ===========
+
+        function initGame() {
+
+            document.getElementById('status').textContent = '游戏开始！轮流点击格子。';
+
+            gameOver = false;
+
+            gameBoard = [];
+
+            const boardElement = document.getElementById('game-board');
+
+            boardElement.innerHTML = ''; // 清空棋盘
+
+            boardElement.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 60px)`;
+
+ 
+
+            // 1. 创建空的格子数据
+
+            for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+
+                gameBoard.push({
+
+                    isBomb: false,
+
+                    isRevealed: false,
+
+                    element: null
+
+                });
+
+            }
+
+ 
+
+            // 2. 随机放置炸弹
+
+            let bombsPlanted = 0;
+
+            while (bombsPlanted < BOMB_COUNT) {
+
+                const randomIndex = Math.floor(Math.random() * gameBoard.length);
+
+                if (!gameBoard[randomIndex].isBomb) {
+
+                    gameBoard[randomIndex].isBomb = true;
+
+                    bombsPlanted++;
+
+                }
+
+            }
+
+ 
+
+            // 3. 创建格子元素并显示
+
+            for (let i = 0; i < gameBoard.length; i++) {
+
+                const cellData = gameBoard[i];
+
+                const cellElement = document.createElement('div');
+
+                cellElement.className = 'cell';
+
+                cellElement.textContent = ''; // 初始为空白
+
+                cellElement.addEventListener('click', () => revealCell(i));
+
+ 
+
+                cellData.element = cellElement; // 关联数据和元素
+
+                boardElement.appendChild(cellElement);
+
+            }
+
+        }
+
+ 
+
+        // =========== 翻开格子 ===========
+
+        function revealCell(index) {
+
+            if (gameOver) return;
+
+            const cell = gameBoard[index];
+
+            if (cell.isRevealed) return; // 已翻开的格子不能再点
+
+ 
+
+            cell.isRevealed = true;
+
+            cell.element.classList.add('revealed');
+
+ 
+
+            if (cell.isBomb) {
+
+                // 踩到炸弹！
+
+                cell.element.textContent = '💣';
+
+                cell.element.classList.add('bomb');
+
+                gameOver = true;
+
+                document.getElementById('status').textContent = '💥 踩到炸弹！接受惩罚吧！';
+
+                // ！！！这里是关键：触发惩罚！！！
+
+                triggerPunishment();
+
+            } else {
+
+                // 安全格子，可以在这里计算并显示周围炸弹数（传统扫雷逻辑）
+
+                // 为了简化，我们只显示一个对勾
+
+                cell.element.textContent = '✓';
+
+                cell.element.style.color = '#27ae60';
+
+            }
+
+        }
+
+ 
+
+        // =========== 惩罚触发函数 ===========
+
+        function triggerPunishment() {
+
+            // 这里是连接“真心话大冒险”的关键！
+
+            // 你可以先用一个简单的弹窗模拟
+
+            const truths = [
+
+                "你最近一次说谎是什么？",
+
+                "在场谁最让你有好感？",
+
+                "说一件自己最尴尬的糗事。"
+
+            ];
+
+            const dares = [
+
+                "用胳膊当桨做划船动作10下。",
+
+                "和左边的人对视30秒不准笑。",
+
+                "模仿一种动物直到有人猜出来。"
+
+            ];
+
+ 
+
+            // 随机选择真心话或大冒险
+
+            const isTruth = Math.random() > 0.5;
+
+            const pool = isTruth ? truths : dares;
+
+            const randomIndex = Math.floor(Math.random() * pool.length);
+
+            const challenge = pool[randomIndex];
+
+ 
+
+            // 弹窗显示惩罚内容（实际可以做得更美观）
+
+            setTimeout(() => {
+
+                alert(`惩罚时间！\n\n${isTruth ? '【真心话】' : '【大冒险】'}\n${challenge}`);
+
+            }, 500); // 延迟半秒，让爆炸效果先显示
+
+        }
+
+ 
+
+        // =========== 重置游戏 ===========
+
+        function resetGame() {
+
+            initGame();
+
+        }
+
+ 
+
+        // 页面加载时自动开始游戏
+
+        window.onload = initGame;
+        // =========== 自定义题库功能 ===========
+        // 默认题库（当用户没有自定义时使用）
+        const defaultTruths = ["你最近一次说谎是什么？", "在场谁最让你有好感？", "说一件自己最尴尬的糗事。"];
+        const defaultDares = ["用胳膊当桨做划船动作10下。", "和左边的人对视30秒不准笑。", "模仿一种动物直到有人猜出来。"];
+
+        // 当前游戏使用的题库（初始为默认题库）
+        let currentTruths = [...defaultTruths];
+        let currentDares = [...defaultDares];
+
+        // 1. 打开自定义弹窗
+        function openCustomizeModal() {
+            // 尝试从浏览器本地存储中读取已保存的自定义题目
+            const savedText = localStorage.getItem('customBombGameQuestions');
+            const textarea = document.getElementById('questionInput');
+            
+            if (savedText) {
+                textarea.value = savedText; // 如果有保存的，就显示出来
+            } else {
+                // 否则，把当前题库按格式生成文本显示
+                const lines = [];
+                currentTruths.forEach(q => lines.push(`真心话:${q}`));
+                currentDares.forEach(q => lines.push(`大冒险:${q}`));
+                textarea.value = lines.join('\n');
+            }
+            
+            document.getElementById('customModal').style.display = 'block';
+        }
+
+        // 2. 关闭自定义弹窗
+        function closeCustomizeModal() {
+            document.getElementById('customModal').style.display = 'none';
+        }
+
+        // 3. 保存自定义题目
+        function saveCustomQuestions() {
+            const inputText = document.getElementById('questionInput').value.trim();
+            const newTruths = [];
+            const newDares = [];
+
+            // 解析用户输入的文本
+            const lines = inputText.split('\n');
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) continue; // 跳过空行
+
+                if (line.startsWith('真心话:')) {
+                    newTruths.push(line.substring(4).trim()); // 去掉“真心话:”四个字
+                } else if (line.startsWith('大冒险:')) {
+                    newDares.push(line.substring(4).trim()); // 去掉“大冒险:”四个字
+                } else {
+                    // 如果行首没有前缀，默认当作真心话（或可以忽略，这里按真心话处理）
+                    newTruths.push(line);
+                }
+            }
+
+            // 更新当前题库（如果用户清空了，则使用默认题库）
+            currentTruths = newTruths.length > 0 ? newTruths : [...defaultTruths];
+            currentDares = newDares.length > 0 ? newDares : [...defaultDares];
+
+            // 将用户输入的原始文本保存到本地存储，以便下次编辑
+            localStorage.setItem('customBombGameQuestions', inputText);
+            
+            alert(`题库已更新！\n成功加载 ${currentTruths.length} 个真心话，${currentDares.length} 个大冒险。`);
+            closeCustomizeModal();
+        }
+
+        // 4. 恢复默认题目
+        function resetToDefault() {
+            if (confirm('确定要恢复为默认题目吗？这会清除你已保存的自定义题目。')) {
+                currentTruths = [...defaultTruths];
+                currentDares = [...defaultDares];
+                localStorage.removeItem('customBombGameQuestions'); // 清除保存的记录
+                document.getElementById('questionInput').value = ''; // 清空输入框
+                alert('已恢复默认题目！');
+            }
+        }
+
+        // 5. 修改原来的惩罚触发函数，使其使用“当前题库”
+        function triggerPunishment() {
+            // 随机选择真心话或大冒险
+            const isTruth = Math.random() > 0.5;
+            const pool = isTruth ? currentTruths : currentDares;
+
+            // 防止题库为空的情况
+            if (pool.length === 0) {
+                pool.push(isTruth ? '（请先自定义真心话题目）' : '（请先自定义大冒险题目）');
+            }
+
+            const randomIndex = Math.floor(Math.random() * pool.length);
+            const challenge = pool[randomIndex];
+
+            // 弹窗显示惩罚内容
+            setTimeout(() => {
+                alert(`惩罚时间！\n\n${isTruth ? '【真心话】' : '【大冒险】'}\n${challenge}`);
+            }, 500);
+        }
+    </script>
+
+</body>
+
+</html>
